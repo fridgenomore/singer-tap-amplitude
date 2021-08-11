@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "city": {
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    "user_id": {
+      "type": [
+        "null",
+        "string"
+      ]
+    }
+  }
+}
