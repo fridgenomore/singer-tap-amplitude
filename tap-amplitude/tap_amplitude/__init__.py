@@ -2,7 +2,7 @@
 import os
 import json
 import singer
-from singer import utils, metadata
+from singer import utils, metadata, get_bookmark
 from singer.catalog import Catalog, CatalogEntry
 from singer.schema import Schema
 
@@ -13,8 +13,12 @@ import base64
 import gzip
 
 from singer.transform import Transformer
+from datetime import datetime, timedelta
 
-REQUIRED_CONFIG_KEYS = ["start_date", "username", "password"]
+AMPLITUDE_DATETIME_FORMAT = "%Y%m%dT%H"
+BASE_AMPLITUDE_URL = "https://amplitude.com/api/2/export"
+
+REQUIRED_CONFIG_KEYS = ["auth_user", "auth_password"]
 LOGGER = singer.get_logger()
 
 
@@ -59,10 +63,17 @@ def discover():
     return Catalog(streams)
 
 
-def load_events():
-    url = 'https://amplitude.com/api/2/export?start=20210701T5&end=20210702T20'
-    auth_user = 'xxx'
-    auth_passwd = 'xxx'
+def load_events(config, state, tap_stream_id):
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=2)
+
+    start = start_date.strftime(AMPLITUDE_DATETIME_FORMAT)
+    end = end_date.strftime(AMPLITUDE_DATETIME_FORMAT)
+
+    url = f'{BASE_AMPLITUDE_URL}?start={start}&end={end}'
+    LOGGER.info(f'Quering URL: {url}')
+    auth_user = config.get("auth_user")
+    auth_passwd = config.get("auth_password")
     base64string = base64.b64encode(('%s:%s' % (auth_user, auth_passwd)).encode('utf-8')).decode('utf-8').replace('\n', '')
 
     hdr = {
@@ -97,7 +108,7 @@ def sync(config, state, catalog):
         key_properties=stream.key_properties,
     )
 
-    tap_data = load_events
+    tap_data = lambda: load_events(config, state, "event")
 
     max_bookmark = None
     with Transformer() as transformer:
