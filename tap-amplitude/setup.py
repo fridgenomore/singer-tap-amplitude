@@ -2,11 +2,11 @@
 from setuptools import setup
 
 setup(
-    name="tap-amplitude",
-    version="0.1.0",
-    description="Singer.io tap for extracting data",
-    author="Stitch",
-    url="http://singer.io",
+    name="tap-amplitude-api",
+    version="0.1.7",
+    description="Singer.io tap for extracting date from amplitude via API",
+    author="FNM, ashalitkin",
+    url="https://github.com/fridgenomore/singer-tap-amplitude ",
     classifiers=["Programming Language :: Python :: 3 :: Only"],
     py_modules=["tap_amplitude"],
     install_requires=[
@@ -16,7 +16,7 @@ setup(
     ],
     entry_points="""
     [console_scripts]
-    tap-amplitude=tap_amplitude:main
+    tap-amplitude-api=tap_amplitude:main
     """,
     packages=["tap_amplitude"],
     package_data = {

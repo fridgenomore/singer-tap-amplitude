@@ -43,7 +43,8 @@ def discover():
     for stream_id, schema in raw_schemas.items():
         # TODO: populate any metadata and stream's key properties here..
         stream_metadata = []
-        key_properties = []
+        key_properties = ["event_id"]
+        replication_key = "server_upload_time"
         streams.append(
             CatalogEntry(
                 tap_stream_id=stream_id,
@@ -51,7 +52,7 @@ def discover():
                 schema=schema,
                 key_properties=key_properties,
                 metadata=stream_metadata,
-                replication_key=None,
+                replication_key=replication_key,
                 is_view=None,
                 database=None,
                 table=None,
@@ -63,10 +64,7 @@ def discover():
     return Catalog(streams)
 
 
-def load_events(config, state, tap_stream_id):
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=2)
-
+def load_events(config, start_date, end_date):
     start = start_date.strftime(AMPLITUDE_DATETIME_FORMAT)
     end = end_date.strftime(AMPLITUDE_DATETIME_FORMAT)
 
@@ -93,6 +91,17 @@ def load_events(config, state, tap_stream_id):
                     continue
                 yield json.loads(line)
 
+def to_datetime(str):
+    return datetime.strptime(str, '%Y-%m-%dT%H:%M:%S.%fZ')
+
+def from_datetime(dtime):
+    return dtime.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+
+def get_max_bookmark(max_bookmark, candidate_bookmark):
+    max_value = max(to_datetime(max_bookmark), to_datetime(candidate_bookmark)) if max_bookmark is not None else to_datetime(candidate_bookmark)
+    return from_datetime(max_value)
+
 def sync(config, state, catalog):
     """ Sync data from tap source """
     # Loop over selected streams in catalog
@@ -100,7 +109,7 @@ def sync(config, state, catalog):
     LOGGER.info("Syncing stream:" + stream.tap_stream_id)
 
     bookmark_column = stream.replication_key
-    is_sorted = True  # TODO: indicate whether data is sorted ascending on bookmark value
+    is_sorted = False  # TODO: indicate whether data is sorted ascending on bookmark value
 
     singer.write_schema(
         stream_name=stream.tap_stream_id,
@@ -108,24 +117,41 @@ def sync(config, state, catalog):
         key_properties=stream.key_properties,
     )
 
-    tap_data = lambda: load_events(config, state, "event")
+    end_date = datetime.now()
+    start_date_bookmark = state.get("event") if "event" in state else None
+    if start_date_bookmark is None:
+        start_date = end_date - timedelta(days=2)
+    else:
+        start_date = to_datetime(start_date_bookmark)
 
-    max_bookmark = None
-    with Transformer() as transformer:
-        for row in tap_data():
-            print(row)
-            rec = transformer.transform(row, stream.schema.to_dict())
-            singer.write_records(stream.tap_stream_id, [rec])
-            if bookmark_column:
-                if is_sorted:
-                    # update bookmark to latest value
-                    singer.write_state({stream.tap_stream_id: rec[bookmark_column]})
-                else:
-                    # if data unsorted, save max value until end of writes
-                    max_bookmark = max(max_bookmark, rec[bookmark_column])
 
-    if bookmark_column and not is_sorted:
-        singer.write_state({stream.tap_stream_id: max_bookmark})
+    for n in range(int((end_date - start_date).days)):
+        try:
+            local_start = start_date + timedelta(days=n)
+            local_end = start_date + timedelta(days=n+1)
+            tap_data = lambda: load_events(config, local_start, local_end)
+
+            max_bookmark = None
+            with Transformer() as transformer:
+                for row in tap_data():
+                    rec = transformer.transform(row, stream.schema.to_dict())
+                    singer.write_records(stream.tap_stream_id, [rec])
+                    if bookmark_column:
+                        if is_sorted:
+                            # update bookmark to latest value
+                            singer.write_state({stream.tap_stream_id: rec[bookmark_column]})
+                        else:
+                            # if data unsorted, save max value until end of writes
+                            max_bookmark = get_max_bookmark(max_bookmark, rec[bookmark_column])
+
+            if bookmark_column and not is_sorted:
+                singer.write_state({stream.tap_stream_id: max_bookmark})
+        except Exception as e:
+            if 404 == e.code:
+                LOGGER.info(f"not data for the date range: {start_date} : {end_date}")
+                continue
+            else:
+                raise e
     return
 
 
