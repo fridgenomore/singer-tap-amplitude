@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="tap-amplitude-api",
-    version="0.1.7",
+    version="0.1.8",
     description="Singer.io tap for extracting date from amplitude via API",
     author="FNM, ashalitkin",
     url="https://github.com/fridgenomore/singer-tap-amplitude ",

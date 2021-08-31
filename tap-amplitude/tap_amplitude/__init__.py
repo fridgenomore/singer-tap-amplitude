@@ -43,7 +43,7 @@ def discover():
     for stream_id, schema in raw_schemas.items():
         # TODO: populate any metadata and stream's key properties here..
         stream_metadata = []
-        key_properties = ["event_id"]
+        key_properties = ["uuid"]
         replication_key = "server_upload_time"
         streams.append(
             CatalogEntry(
